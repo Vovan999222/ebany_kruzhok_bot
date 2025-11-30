@@ -169,7 +169,8 @@ async def start(update: Update, context: CallbackContext):
     name = get_user_display_name(user)
     logger.info(f"[{user.id}] {name} запустил бота.")
     await update.message.reply_text(
-        "Привет! Отправь мне ссылку на TikTok, видео или аудиофайл."
+        "Привет! Я могу конвертировать видео с TikTok в видеокружки или голосовые сообщения. "
+        "Просто отправь мне ссылку на видео с TikTok, и я всё сделаю за тебя!"
     )
 
 async def handle_audio(update: Update, context: CallbackContext):
