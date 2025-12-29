@@ -6,10 +6,13 @@ import importlib.metadata
 import re
 import uuid
 import asyncio
+import time
 from datetime import datetime
 from logging.handlers import TimedRotatingFileHandler
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, User
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, CallbackQueryHandler
+from telegram.error import NetworkError 
+from telegram.request import HTTPXRequest
 import ffmpeg
 import yt_dlp
 
@@ -41,7 +44,8 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-log_filename = datetime.now().strftime('logs/bot-%Y-%m-%d-%H-%M-%S.log')
+
+log_filename = 'logs/bot-latest.log'
 
 file_handler = TimedRotatingFileHandler(
     filename=log_filename,
@@ -50,6 +54,15 @@ file_handler = TimedRotatingFileHandler(
     backupCount=30,
     encoding='utf-8'
 )
+file_handler.suffix = "%Y-%m-%d-%H-%M-%S"
+
+def log_namer(default_name):
+    base_dir, filename = os.path.split(default_name)
+    clean_date = filename.replace("bot-latest.log.", "")
+    new_filename = f"bot-{clean_date}.log"
+    return os.path.join(base_dir, new_filename)
+
+file_handler.namer = log_namer
 file_handler.setLevel(logging.INFO)
 file_handler.setFormatter(formatter)
 
@@ -57,10 +70,13 @@ console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.INFO)
 console_handler.setFormatter(formatter)
 
+if logger.hasHandlers():
+    logger.handlers.clear()
+
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
-print(f"Логи будут записываться в файл: {log_filename}")
+print(f"Активный лог: {log_filename}")
 
 # Лимиты
 MAX_INPUT_SIZE = 50 * 1024 * 1024  
@@ -161,9 +177,8 @@ async def handle_audio(update: Update, context: CallbackContext):
 
     try:
         file_info = await context.bot.get_file(update.message.audio.file_id)
-
         logger.info(f"[{user.id}] {name} прислал АУДИО. Ссылка: {file_info.file_path}")
-
+        
         await update.message.reply_text("⏳ Конвертирую...")
         await file_info.download_to_drive(input_path)
 
@@ -199,7 +214,6 @@ async def handle_video(update: Update, context: CallbackContext):
 
     try:
         file_info = await context.bot.get_file(update.message.video.file_id)
-
         logger.info(f"[{user.id}] {name} прислал ВИДЕО. Ссылка: {file_info.file_path}")
 
         await update.message.reply_text("⏳ Обрабатываю видео...")
@@ -309,17 +323,26 @@ async def button_callback(update: Update, context: CallbackContext):
                 try: os.remove(p) 
                 except: pass
 
-def main():
+def run_bot():
+    """Функция непосредственного запуска бота"""
     if not TOKEN or TOKEN == "":
         print("ОШИБКА: Вы забыли вставить TOKEN в файле bot.py!")
         return
 
     print("Бот запускается...")
+
+    request_kwargs = HTTPXRequest(
+        connection_pool_size=8,
+        read_timeout=30.0,
+        write_timeout=30.0,
+        connect_timeout=30.0,
+        pool_timeout=30.0
+    )
+
     application = (
         Application.builder()
         .token(TOKEN)
-        .read_timeout(60)
-        .write_timeout(60)
+        .request(request_kwargs)
         .build()
     )
     
@@ -331,6 +354,27 @@ def main():
     
     print("Бот успешно запущен.")
     application.run_polling()
+
+def main():
+    """Главный цикл с обработкой ошибок сети и выхода"""
+    while True:
+        try:
+            run_bot()
+        
+        except KeyboardInterrupt:
+            print("\nБот остановлен пользователем.")
+            sys.exit(0)
+
+        except NetworkError as e:
+            logger.error(f"Сетевая ошибка: {e}")
+            print(f"\nСбой сети ({e}). Перезапуск через 3 секунды...")
+            time.sleep(3)
+
+        except Exception as e:
+            logger.error(f"КРИТИЧЕСКАЯ ОШИБКА: {e}")
+            print(f"\nБОТ УПАЛ С ОШИБКОЙ: {e}")
+            print("Перезапуск через 3 секунды...")
+            time.sleep(3)
 
 if __name__ == "__main__":
     main()
