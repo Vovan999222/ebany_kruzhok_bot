@@ -32,7 +32,7 @@ To run the bot, you need:
 
 ### Installing FFmpeg:
 
-* **Ubuntu/Debian**: `sudo apt update && sudo apt install ffmpeg`
+* **Ubuntu/Debian**: `sudo apt update && sudo apt upgrade && sudo apt install ffmpeg`
 * **Windows**:
     * **Method 1 (Recommended):** Open a terminal (PowerShell or CMD) and run:
       ```cmd
