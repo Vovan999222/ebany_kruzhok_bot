@@ -36,7 +36,7 @@ To run the bot, you need:
 * **Windows**:
     * **Method 1 (Recommended):** Open a terminal (PowerShell or CMD) and run:
       ```cmd
-      winget install ffmpeg
+      winget install Gyan.FFmpeg
       ```
       > **⚠️ "winget" command not found?** > If you are using an older version of Windows 10 and the command is missing, download and install the **App Installer** from the [official GitHub releases](https://github.com/microsoft/winget-cli/releases) (look for the file ending in `.msixbundle`).
     
