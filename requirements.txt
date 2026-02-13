@@ -1,0 +1,4 @@
+python-telegram-bot
+imageio-ffmpeg
+ffmpeg-python
+yt-dlp
