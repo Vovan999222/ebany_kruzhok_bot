@@ -6,18 +6,19 @@ import importlib.metadata
 import re
 import uuid
 import asyncio
-import time
+from config import TOKEN
 from datetime import datetime
 from logging.handlers import TimedRotatingFileHandler
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, User
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, CallbackQueryHandler
-from telegram.error import NetworkError 
-from telegram.request import HTTPXRequest
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.filters import CommandStart
+from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 import ffmpeg
 import yt_dlp
 
 REQUIRED_LIBRARIES = [
-    "python-telegram-bot",
+    "aiogram",
     "imageio-ffmpeg",
     "ffmpeg-python",
     "yt-dlp"
@@ -39,12 +40,9 @@ def check_libraries_and_exit_if_missing():
 check_libraries_and_exit_if_missing()
 
 os.makedirs('logs', exist_ok=True)
-
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-
 log_filename = 'logs/bot-latest.log'
 
 file_handler = TimedRotatingFileHandler(
@@ -78,16 +76,19 @@ logger.addHandler(console_handler)
 
 print(f"Активный лог: {log_filename}")
 
-# Лимиты
+# лимиты
 MAX_INPUT_SIZE = 50 * 1024 * 1024  
-MAX_NOTE_SIZE = 12 * 1024 * 1024   
-
-# ТОКЕН
-TOKEN = "" 
+MAX_NOTE_SIZE = 12 * 1024 * 1024
 
 TIKTOK_URL_REGEX = r"https?://(?:[\w-]+\.)*tiktok\.com/.*"
 
-def get_user_display_name(user: User):
+bot = Bot(token=TOKEN)
+dp = Dispatcher()
+
+class DownloadState(StatesGroup):
+    waiting_for_action = State()
+
+def get_user_display_name(user: types.User):
     if user.username:
         return f"@{user.username}"
     return user.first_name
@@ -154,21 +155,23 @@ def run_ffmpeg_voice(input_path, output_path):
         logger.error(f"FFmpeg Error: {result.stderr}")
         raise Exception("Ошибка конвертации аудио")
 
-async def start(update: Update, context: CallbackContext):
-    user = update.effective_user
+@dp.message(CommandStart())
+async def start(message: types.Message):
+    user = message.from_user
     name = get_user_display_name(user)
     logger.info(f"[{user.id}] {name} начал использовать бота.")
-    await update.message.reply_text(
+    await message.answer(
         "Привет! Я могу конвертировать видео с TikTok в видеокружки или голосовые сообщения. "
         "Просто отправь мне ссылку на видео с TikTok, и я всё сделаю за тебя!"
     )
 
-async def handle_audio(update: Update, context: CallbackContext):
-    user = update.effective_user
+@dp.message(F.audio)
+async def handle_audio(message: types.Message):
+    user = message.from_user
     name = get_user_display_name(user)
 
-    if update.message.audio.file_size > MAX_INPUT_SIZE:
-        await update.message.reply_text("❌ Аудиофайл слишком большой (>50МБ).")
+    if message.audio.file_size > MAX_INPUT_SIZE:
+        await message.answer("❌ Аудиофайл слишком большой (>50МБ).")
         return
 
     unique_id = uuid.uuid4()
@@ -176,36 +179,39 @@ async def handle_audio(update: Update, context: CallbackContext):
     output_path = f"{unique_id}_voice.ogg"
 
     try:
-        file_info = await context.bot.get_file(update.message.audio.file_id)
-        logger.info(f"[{user.id}] {name} прислал АУДИО. Ссылка: {file_info.file_path}")
+        file_info = await bot.get_file(message.audio.file_id)
+        file_url = f"https://api.telegram.org/file/bot{bot.token}/{file_info.file_path}"
         
-        await update.message.reply_text("⏳ Конвертирую...")
-        await file_info.download_to_drive(input_path)
+        logger.info(f"[{user.id}] {name} прислал АУДИО. Ссылка: {file_url}")
+        await message.answer("⏳ Конвертирую...")
+        
+        await bot.download_file(file_info.file_path, destination=input_path)
 
         await asyncio.get_running_loop().run_in_executor(
             None, lambda: run_ffmpeg_voice(input_path, output_path)
         )
 
         if os.path.exists(output_path):
-            with open(output_path, "rb") as f:
-                await update.message.reply_voice(f)
+            await message.answer_voice(FSInputFile(output_path))
             logger.info(f"[{user.id}] {name} -> Голосовое отправлено.")
         else:
-            await update.message.reply_text("❌ Ошибка создания файла.")
+            await message.answer("❌ Ошибка создания файла.")
 
     except Exception as e:
         logger.error(f"Error audio: {e}")
-        await update.message.reply_text("❌ Ошибка.")
+        await message.answer("❌ Ошибка.")
     finally:
         for p in [input_path, output_path]:
             if os.path.exists(p): os.remove(p)
 
-async def handle_video(update: Update, context: CallbackContext):
-    user = update.effective_user
+
+@dp.message(F.video)
+async def handle_video(message: types.Message):
+    user = message.from_user
     name = get_user_display_name(user)
     
-    if update.message.video.file_size > MAX_INPUT_SIZE:
-        await update.message.reply_text("❌ Файл слишком большой (>50МБ).")
+    if message.video.file_size > MAX_INPUT_SIZE:
+        await message.answer("❌ Файл слишком большой (>50МБ).")
         return
 
     unique_id = uuid.uuid4()
@@ -213,33 +219,35 @@ async def handle_video(update: Update, context: CallbackContext):
     output_path = f"{unique_id}_circle.mp4"
 
     try:
-        file_info = await context.bot.get_file(update.message.video.file_id)
-        logger.info(f"[{user.id}] {name} прислал ВИДЕО. Ссылка: {file_info.file_path}")
-
-        await update.message.reply_text("⏳ Обрабатываю видео...")
-        await file_info.download_to_drive(input_path)
+        file_info = await bot.get_file(message.video.file_id)
+        file_url = f"https://api.telegram.org/file/bot{bot.token}/{file_info.file_path}"
+        
+        logger.info(f"[{user.id}] {name} прислал ВИДЕО. Ссылка: {file_url}")
+        await message.answer("⏳ Обрабатываю видео...")
+        
+        await bot.download_file(file_info.file_path, destination=input_path)
 
         await asyncio.get_running_loop().run_in_executor(
             None, lambda: run_ffmpeg_video_note(input_path, output_path)
         )
 
         if os.path.exists(output_path) and os.path.getsize(output_path) < MAX_NOTE_SIZE:
-            with open(output_path, "rb") as f:
-                await update.message.reply_video_note(f)
+            await message.answer_video_note(FSInputFile(output_path))
             logger.info(f"[{user.id}] {name} -> Видеокружок отправлен.")
         else:
-            await update.message.reply_text("❌ Файл слишком большой или поврежден.")
+            await message.answer("❌ Файл слишком большой или поврежден.")
 
     except Exception as e:
         logger.error(f"Error video: {e}")
-        await update.message.reply_text("❌ Ошибка.")
+        await message.answer("❌ Ошибка.")
     finally:
         for p in [input_path, output_path]:
             if os.path.exists(p): os.remove(p)
 
-async def handle_text(update: Update, context: CallbackContext):
-    text = update.message.text
-    user = update.effective_user
+@dp.message(F.text)
+async def handle_text(message: types.Message, state: FSMContext):
+    text = message.text
+    user = message.from_user
     name = get_user_display_name(user)
 
     logger.info(f"[{user.id}] {name} написал: {text}")
@@ -248,37 +256,40 @@ async def handle_text(update: Update, context: CallbackContext):
         match = re.search(TIKTOK_URL_REGEX, text)
         clean_url = match.group(0) 
         
-        keyboard = [
-            [InlineKeyboardButton("📹 Видеокружок", callback_data='video')],
-            [InlineKeyboardButton("🎤 Голосовое", callback_data='voice')]
-        ]
-        context.user_data['tiktok_url'] = clean_url
-        await update.message.reply_text("Что сделать с ссылкой?", reply_markup=InlineKeyboardMarkup(keyboard))
-    else:
-        pass
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📹 Видеокружок", callback_data='video')],
+            [InlineKeyboardButton(text="🎤 Голосовое", callback_data='voice')]
+        ])
+        
+        await state.update_data(tiktok_url=clean_url)
+        await message.answer("Что сделать с ссылкой?", reply_markup=keyboard)
 
-async def button_callback(update: Update, context: CallbackContext):
-    query = update.callback_query
-    await query.answer()
+@dp.callback_query(F.data.in_({"video", "voice"}))
+async def button_callback(callback: types.CallbackQuery, state: FSMContext):
+    await callback.answer()
     
-    user = query.from_user
+    user = callback.from_user
     name = get_user_display_name(user)
-    logger.info(f"[{user.id}] {name} нажал кнопку: {query.data}")
+    logger.info(f"[{user.id}] {name} нажал кнопку: {callback.data}")
 
-    tiktok_url = context.user_data.get('tiktok_url')
+    data = await state.get_data()
+    tiktok_url = data.get('tiktok_url')
+    
     if not tiktok_url:
-        await query.edit_message_text("❌ Ссылка устарела.")
+        await callback.message.edit_text("❌ Ссылка устарела.")
         return
+
+    await state.clear()
 
     unique_id = uuid.uuid4()
     input_path = f"{unique_id}_dl.mp4"
     output_path = f"{unique_id}_out.mp4"
 
-    if query.data == 'video':
-        await query.edit_message_text("⏳ Скачиваю и делаю кружок...")
+    if callback.data == 'video':
+        await callback.message.edit_text("⏳ Скачиваю и делаю кружок...")
         mode = 'video'
     else:
-        await query.edit_message_text("⏳ Скачиваю и делаю голосовое...")
+        await callback.message.edit_text("⏳ Скачиваю и делаю голосовое...")
         mode = 'voice'
         output_path = f"{unique_id}_voice.ogg"
 
@@ -290,7 +301,7 @@ async def button_callback(update: Update, context: CallbackContext):
         )
 
         if not os.path.exists(input_path):
-            await context.bot.send_message(query.from_user.id, "❌ Не удалось скачать.")
+            await callback.message.answer("❌ Не удалось скачать.")
             return
 
         if mode == 'video':
@@ -298,24 +309,22 @@ async def button_callback(update: Update, context: CallbackContext):
                 None, lambda: run_ffmpeg_video_note(input_path, output_path)
             )
             if os.path.exists(output_path) and os.path.getsize(output_path) < MAX_NOTE_SIZE:
-                with open(output_path, "rb") as f:
-                    await context.bot.send_video_note(query.from_user.id, f)
+                await callback.message.answer_video_note(FSInputFile(output_path))
             else:
-                 await context.bot.send_message(query.from_user.id, "⚠️ Видео слишком большое.")
+                 await callback.message.answer("⚠️ Видео слишком большое.")
 
         elif mode == 'voice':
             await asyncio.get_running_loop().run_in_executor(
                 None, lambda: run_ffmpeg_voice(input_path, output_path)
             )
             if os.path.exists(output_path):
-                with open(output_path, "rb") as f:
-                    await context.bot.send_voice(query.from_user.id, f)
+                await callback.message.answer_voice(FSInputFile(output_path))
             else:
-                 await context.bot.send_message(query.from_user.id, "❌ Ошибка аудио.")
+                 await callback.message.answer("❌ Ошибка аудио.")
 
     except Exception as e:
         logger.error(f"Process error: {e}")
-        await context.bot.send_message(query.from_user.id, "❌ Ошибка обработки.")
+        await callback.message.answer("❌ Ошибка обработки.")
     
     finally:
         for p in [input_path, output_path]:
@@ -323,58 +332,18 @@ async def button_callback(update: Update, context: CallbackContext):
                 try: os.remove(p) 
                 except: pass
 
-def run_bot():
-    """Функция непосредственного запуска бота"""
+async def main():
     if not TOKEN or TOKEN == "":
-        print("ОШИБКА: Вы забыли вставить TOKEN в файле bot.py!")
+        print("ОШИБКА: Вы забыли вставить TOKEN в файле config.py!")
         return
 
     print("Бот запускается...")
-
-    request_kwargs = HTTPXRequest(
-        connection_pool_size=8,
-        read_timeout=30.0,
-        write_timeout=30.0,
-        connect_timeout=30.0,
-        pool_timeout=30.0
-    )
-
-    application = (
-        Application.builder()
-        .token(TOKEN)
-        .request(request_kwargs)
-        .build()
-    )
     
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.AUDIO, handle_audio))
-    application.add_handler(MessageHandler(filters.VIDEO, handle_video))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-    application.add_handler(CallbackQueryHandler(button_callback))
-    
-    print("Бот успешно запущен.")
-    application.run_polling()
-
-def main():
-    """Главный цикл с обработкой ошибок сети и выхода"""
-    while True:
-        try:
-            run_bot()
-        
-        except KeyboardInterrupt:
-            print("\nБот остановлен пользователем.")
-            sys.exit(0)
-
-        except NetworkError as e:
-            logger.error(f"Сетевая ошибка: {e}")
-            print(f"\nСбой сети ({e}). Перезапуск через 3 секунды...")
-            time.sleep(3)
-
-        except Exception as e:
-            logger.error(f"КРИТИЧЕСКАЯ ОШИБКА: {e}")
-            print(f"\nБОТ УПАЛ С ОШИБКОЙ: {e}")
-            print("Перезапуск через 3 секунды...")
-            time.sleep(3)
+    await bot.delete_webhook(drop_pending_updates=True)
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    main()
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        print("\nБот остановлен пользователем.")
