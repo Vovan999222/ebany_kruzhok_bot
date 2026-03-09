@@ -74,7 +74,7 @@ source venv/bin/activate
 You can install the libraries manually:
 
 ```bash
-pip install python-telegram-bot imageio-ffmpeg ffmpeg-python yt-dlp
+pip install aiogram imageio-ffmpeg ffmpeg-python yt-dlp
 
 ```
 
@@ -87,7 +87,7 @@ pip install -r requirements.txt
 
 ### 4. Configuration
 
-Open the `bot.py` file and find the following line:
+Open the `config.py` file and find the following line:
 
 ```python
 TOKEN = ""  # Paste your token from @BotFather here
