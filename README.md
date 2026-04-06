@@ -2,6 +2,7 @@
 
 ![Python](https://img.shields.io/badge/Python-3.8%2B-blue?style=for-the-badge&logo=python)
 ![Telegram](https://img.shields.io/badge/Telegram-Bot-2CA5E0?style=for-the-badge&logo=telegram)
+![yt-dlp](https://img.shields.io/badge/yt--dlp-Enabled-red?style=for-the-badge&logo=youtube)
 ![FFmpeg](https://img.shields.io/badge/FFmpeg-Enabled-green?style=for-the-badge&logo=ffmpeg)
 
 This Telegram bot is designed to convert media files and TikTok links into native Telegram formats (Video Notes and Voice Messages).
