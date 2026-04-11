@@ -11,18 +11,21 @@ The bot automatically downloads TikTok videos without watermarks and processes f
 
 ## Features
 
-* **TikTok Downloader**:
-    * Accepts TikTok links.
-    * Offers a choice: convert to **Video Note** (circle) or **Voice Message**.
-* **Video Conversion**:
-    * Converts standard video files (.mp4, etc.) into circular Video Notes.
-    * Automatically crops video to a 1:1 aspect ratio (center) and resizes to 640x640.
-* **Audio Conversion**:
-    * Converts audio files (.mp3, etc.) into Voice Messages (Opus codec).
-* **Logging**:
-    * Maintains detailed logs with date-based rotation in the `logs/` directory.
-* **Auto-Restart**:
-    * Built-in protection against crashes and network errors.
+**TikTok Downloader**:
+* Accepts TikTok links.
+* Offers a choice: convert to **Video Note** (circle) or **Voice Message**.
+
+**Video Conversion**:
+* Converts standard video files (.mp4, etc.) into circular Video Notes.
+* Automatically crops video to a 1:1 aspect ratio (center) and resizes to 640x640.
+
+**Audio Conversion**:
+* Converts audio files (.mp3, etc.) into Voice Messages (Opus codec).
+**Logging**:
+* Maintains detailed logs with date-based rotation in the `logs/` directory.
+
+**Auto-Restart**:
+* Built-in protection against crashes and network errors.
 
 ## Requirements
 
@@ -33,19 +36,27 @@ To run the bot, you need:
 
 ### Installing FFmpeg:
 
-* **Ubuntu/Debian**: `sudo apt update && sudo apt upgrade && sudo apt install ffmpeg`
-* **Windows**:
-    * **Method 1 (Recommended):** Open a terminal (PowerShell or CMD) and run:
-      ```cmd
-      winget install Gyan.FFmpeg
-      ```
-      > **⚠️ "winget" command not found?** > If you are using an older version of Windows 10 and the command is missing, download and install the **App Installer** from the [official GitHub releases](https://github.com/microsoft/winget-cli/releases) (look for the file ending in `.msixbundle`).
-    
-    * **Method 2 (Manual):** Download the archive from the [official repository](https://github.com/GyanD/codexffmpeg/releases), unzip it, and add the path to the `bin` folder to your system environment variables (PATH).
-      ```cmd
-      C:\ffmpeg\bin
-      ```
-* **MacOS**: `brew install ffmpeg`
+**Ubuntu/Debian**: 
+```
+sudo apt update && sudo apt upgrade && sudo apt install ffmpeg
+```
+
+**Windows**:
+* **Method 1 (Recommended):** Open a terminal (PowerShell or CMD) and run:
+```cmd
+winget install Gyan.FFmpeg
+```
+> **⚠️ "winget" command not found?** > If you are using an older version of Windows 10 and the command is missing, download and install the **App Installer** from the [official GitHub releases](https://github.com/microsoft/winget-cli/releases) (look for the file ending in `.msixbundle`).
+
+* **Method 2 (Manual):** Download the archive from the [official repository](https://github.com/GyanD/codexffmpeg/releases), unzip it, and add the path to the `bin` folder to your system environment variables (PATH).
+```cmd
+C:\ffmpeg\bin
+```
+
+**MacOS**:
+```
+brew install ffmpeg
+```
 
 ## Installation & Usage
 
