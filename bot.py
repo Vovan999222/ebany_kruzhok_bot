@@ -27,7 +27,6 @@ REQUIRED_LIBRARIES = [
 def check_libraries_and_exit_if_missing():
     installed_packages = {pkg.name.lower() for pkg in importlib.metadata.distributions()}
     missing = [lib for lib in REQUIRED_LIBRARIES if lib.lower() not in installed_packages]
-
     if missing:
         print("\n" + "!" * 60)
         print("ОШИБКА: ОБНАРУЖЕНЫ НЕДОСТАЮЩИЕ БИБЛИОТЕКИ")
@@ -109,11 +108,11 @@ def run_ffmpeg_video_note(input_path, output_path):
         video_stream = next((s for s in probe['streams'] if s['codec_type'] == 'video'), None)
         width = int(video_stream['width'])
         height = int(video_stream['height'])
-        
+
         min_dim = min(width, height)
         crop_x = (width - min_dim) // 2
         crop_y = (height - min_dim) // 2
-        
+
         filter_str = (
             f"crop={min_dim}:{min_dim}:{crop_x}:{crop_y},"
             "scale=640:640,"
@@ -165,12 +164,13 @@ async def start(message: types.Message):
         "Просто отправь мне ссылку на видео с TikTok, и я всё сделаю за тебя!"
     )
 
-@dp.message(F.audio)
+@dp.message(F.audio | (F.document & F.document.mime_type.startswith('audio/')))
 async def handle_audio(message: types.Message):
     user = message.from_user
     name = get_user_display_name(user)
+    file_obj = message.audio or message.document
 
-    if message.audio.file_size > MAX_INPUT_SIZE:
+    if file_obj.file_size > MAX_INPUT_SIZE:
         await message.answer("❌ Аудиофайл слишком большой (>50МБ).")
         return
 
@@ -179,18 +179,14 @@ async def handle_audio(message: types.Message):
     output_path = f"{unique_id}_voice.ogg"
 
     try:
-        file_info = await bot.get_file(message.audio.file_id)
+        file_info = await bot.get_file(file_obj.file_id)
         file_url = f"https://api.telegram.org/file/bot{bot.token}/{file_info.file_path}"
-        
-        logger.info(f"[{user.id}] {name} прислал АУДИО. Ссылка: {file_url}")
+        logger.info(f"[{user.id}] {name} прислал аудио. Ссылка: {file_url}")
         await message.answer("⏳ Конвертирую...")
-        
         await bot.download_file(file_info.file_path, destination=input_path)
-
         await asyncio.get_running_loop().run_in_executor(
             None, lambda: run_ffmpeg_voice(input_path, output_path)
         )
-
         if os.path.exists(output_path):
             await message.answer_voice(FSInputFile(output_path))
             logger.info(f"[{user.id}] {name} -> Голосовое отправлено.")
@@ -205,12 +201,13 @@ async def handle_audio(message: types.Message):
             if os.path.exists(p): os.remove(p)
 
 
-@dp.message(F.video)
+@dp.message(F.video | (F.document & F.document.mime_type.startswith('video/')))
 async def handle_video(message: types.Message):
     user = message.from_user
     name = get_user_display_name(user)
-    
-    if message.video.file_size > MAX_INPUT_SIZE:
+    file_obj = message.video or message.document
+
+    if file_obj.file_size > MAX_INPUT_SIZE:
         await message.answer("❌ Файл слишком большой (>50МБ).")
         return
 
@@ -219,18 +216,14 @@ async def handle_video(message: types.Message):
     output_path = f"{unique_id}_circle.mp4"
 
     try:
-        file_info = await bot.get_file(message.video.file_id)
+        file_info = await bot.get_file(file_obj.file_id)
         file_url = f"https://api.telegram.org/file/bot{bot.token}/{file_info.file_path}"
-        
-        logger.info(f"[{user.id}] {name} прислал ВИДЕО. Ссылка: {file_url}")
+        logger.info(f"[{user.id}] {name} прислал видео. Ссылка: {file_url}")
         await message.answer("⏳ Обрабатываю видео...")
-        
         await bot.download_file(file_info.file_path, destination=input_path)
-
         await asyncio.get_running_loop().run_in_executor(
             None, lambda: run_ffmpeg_video_note(input_path, output_path)
         )
-
         if os.path.exists(output_path) and os.path.getsize(output_path) < MAX_NOTE_SIZE:
             await message.answer_video_note(FSInputFile(output_path))
             logger.info(f"[{user.id}] {name} -> Видеокружок отправлен.")
@@ -249,36 +242,31 @@ async def handle_text(message: types.Message, state: FSMContext):
     text = message.text
     user = message.from_user
     name = get_user_display_name(user)
-
     logger.info(f"[{user.id}] {name} написал: {text}")
-
     if re.search(TIKTOK_URL_REGEX, text):
         match = re.search(TIKTOK_URL_REGEX, text)
-        clean_url = match.group(0) 
-        
+        clean_url = match.group(0)
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📹 Видеокружок", callback_data='video')],
             [InlineKeyboardButton(text="🎤 Голосовое", callback_data='voice')]
         ])
-        
         await state.update_data(tiktok_url=clean_url)
         await message.answer("Что сделать с ссылкой?", reply_markup=keyboard)
 
 @dp.callback_query(F.data.in_({"video", "voice"}))
 async def button_callback(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
-    
+
     user = callback.from_user
     name = get_user_display_name(user)
     logger.info(f"[{user.id}] {name} нажал кнопку: {callback.data}")
 
     data = await state.get_data()
     tiktok_url = data.get('tiktok_url')
-    
+
     if not tiktok_url:
         await callback.message.edit_text("❌ Ссылка устарела.")
         return
-
     await state.clear()
 
     unique_id = uuid.uuid4()
@@ -325,7 +313,7 @@ async def button_callback(callback: types.CallbackQuery, state: FSMContext):
     except Exception as e:
         logger.error(f"Process error: {e}")
         await callback.message.answer("❌ Ошибка обработки.")
-    
+
     finally:
         for p in [input_path, output_path]:
             if os.path.exists(p): 
@@ -336,9 +324,7 @@ async def main():
     if not TOKEN or TOKEN == "":
         print("ОШИБКА: Вы забыли вставить TOKEN в файле config.py!")
         return
-
     print("Бот запускается...")
-    
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
@@ -346,4 +332,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
-        print("\nБот остановлен пользователем.")
+        print("Бот остановлен пользователем.")
