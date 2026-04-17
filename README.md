@@ -91,7 +91,7 @@ pip install aiogram imageio-ffmpeg ffmpeg-python yt-dlp
 
 ```
 
-Or create a `requirements.txt` file and install via:
+Or use the `requirements.txt` file and install it via:
 
 ```bash
 pip install -r requirements.txt
