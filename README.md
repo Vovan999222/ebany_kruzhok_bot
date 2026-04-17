@@ -72,13 +72,14 @@ cd ebany_kruzhok_bot
 
 ```bash
 python -m venv venv
-
-# Windows:
+```
+Windows:
+```
 venv\Scripts\activate
-
-# Linux/Mac:
+```
+Linux/Mac:
+```
 source venv/bin/activate
-
 ```
 
 ### 3. Install dependencies
@@ -123,4 +124,4 @@ python bot.py
 
 ## License
 
-This project is distributed under the [MIT License.](https://raw.githubusercontent.com/Vovan999222/ebany_kruzhok_bot/refs/heads/main/LICENSE)
+This project is distributed under the [MIT License](https://raw.githubusercontent.com/Vovan999222/ebany_kruzhok_bot/refs/heads/main/LICENSE)
