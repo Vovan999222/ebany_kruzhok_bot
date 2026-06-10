@@ -8,6 +8,8 @@ import uuid
 import asyncio
 from config import TOKEN
 from datetime import datetime
+from aiogram.enums import ChatAction
+from aiogram.utils.chat_action import ChatActionSender
 from logging.handlers import TimedRotatingFileHandler
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart
@@ -251,7 +253,7 @@ async def handle_text(message: types.Message, state: FSMContext):
             [InlineKeyboardButton(text="🎤 Голосовое", callback_data='voice')]
         ])
         await state.update_data(tiktok_url=clean_url)
-        await message.answer("Что сделать с ссылкой?", reply_markup=keyboard)
+        await message.reply("Что сделать с ссылкой?", reply_markup=keyboard)
 
 @dp.callback_query(F.data.in_({"video", "voice"}))
 async def button_callback(callback: types.CallbackQuery, state: FSMContext):
@@ -276,43 +278,59 @@ async def button_callback(callback: types.CallbackQuery, state: FSMContext):
     if callback.data == 'video':
         await callback.message.edit_text("⏳ Скачиваю и делаю кружок...")
         mode = 'video'
+        action_type = ChatAction.RECORD_VIDEO_NOTE
     else:
         await callback.message.edit_text("⏳ Скачиваю и делаю голосовое...")
         mode = 'voice'
         output_path = f"{unique_id}_voice.ogg"
+        action_type = ChatAction.RECORD_VOICE
 
     try:
-        ydl_opts = {'outtmpl': input_path, 'format': 'bestvideo[vcodec^=avc]+bestaudio[ext=m4a]/best[ext=mp4]/best', 'noplaylist': True, 'quiet': True}
-
-        await asyncio.get_running_loop().run_in_executor(
-            None, lambda: yt_dlp.YoutubeDL(ydl_opts).download([tiktok_url])
-        )
-
-        if not os.path.exists(input_path):
-            await callback.message.answer("❌ Не удалось скачать.")
-            return
-
-        if mode == 'video':
+        async with ChatActionSender(bot=bot, chat_id=callback.message.chat.id, action=action_type):
+            ydl_opts = {'outtmpl': input_path, 'format': 'bestvideo[vcodec^=avc]+bestaudio[ext=m4a]/best[ext=mp4]/best', 'noplaylist': True, 'quiet': True}
             await asyncio.get_running_loop().run_in_executor(
-                None, lambda: run_ffmpeg_video_note(input_path, output_path)
+                None, lambda: yt_dlp.YoutubeDL(ydl_opts).download([tiktok_url])
             )
-            if os.path.exists(output_path) and os.path.getsize(output_path) < MAX_NOTE_SIZE:
-                await callback.message.answer_video_note(FSInputFile(output_path))
-            else:
-                 await callback.message.answer("⚠️ Видео слишком большое.")
 
-        elif mode == 'voice':
-            await asyncio.get_running_loop().run_in_executor(
-                None, lambda: run_ffmpeg_voice(input_path, output_path)
-            )
-            if os.path.exists(output_path):
-                await callback.message.answer_voice(FSInputFile(output_path))
-            else:
-                 await callback.message.answer("❌ Ошибка аудио.")
+            if not os.path.exists(input_path):
+                await callback.message.edit_text("❌ Не удалось скачать.")
+                return
+
+            reply_id = None
+            if callback.message.reply_to_message:
+                reply_id = callback.message.reply_to_message.message_id
+
+            if mode == 'video':
+                await asyncio.get_running_loop().run_in_executor(
+                    None, lambda: run_ffmpeg_video_note(input_path, output_path)
+                )
+                if os.path.exists(output_path) and os.path.getsize(output_path) < MAX_NOTE_SIZE:
+                    await bot.send_video_note(
+                        chat_id=callback.message.chat.id,
+                        video_note=FSInputFile(output_path),
+                        reply_to_message_id=reply_id
+                    )
+                    await callback.message.delete()
+                else:
+                     await callback.message.edit_text("⚠️ Видео слишком большое.")
+
+            elif mode == 'voice':
+                await asyncio.get_running_loop().run_in_executor(
+                    None, lambda: run_ffmpeg_voice(input_path, output_path)
+                )
+                if os.path.exists(output_path):
+                    await bot.send_voice(
+                        chat_id=callback.message.chat.id,
+                        voice=FSInputFile(output_path),
+                        reply_to_message_id=reply_id
+                    )
+                    await callback.message.delete()
+                else:
+                     await callback.message.edit_text("❌ Ошибка аудио.")
 
     except Exception as e:
         logger.error(f"Process error: {e}")
-        await callback.message.answer("❌ Ошибка обработки.")
+        await callback.message.edit_text("❌ Ошибка обработки.")
 
     finally:
         for p in [input_path, output_path]:
@@ -325,7 +343,7 @@ async def main():
         print("ОШИБКА: Вы забыли вставить TOKEN в файле config.py!")
         return
     print("Бот запускается...")
-    await bot.delete_webhook(drop_pending_updates=True)
+    await bot.delete_webhook(drop_pending_updates=False)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
