@@ -126,6 +126,7 @@ def run_ffmpeg_video_note(input_path, output_path):
             'ffmpeg', '-y', '-hide_banner', '-loglevel', 'error',
             '-i', clean_input_path,
             '-vf', filter_str,
+            '-af', 'volume=3.0',
             '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '28',
             '-pix_fmt', 'yuv420p',
             '-c:a', 'aac', '-b:a', '64k', '-ar', '44100', '-ac', '1',
@@ -147,6 +148,7 @@ def run_ffmpeg_voice(input_path, output_path):
         'ffmpeg', '-y', '-hide_banner', '-loglevel', 'error',
         '-i', input_path,
         '-vn', '-map', '0:a',
+        '-af', 'volume=1.0',
         '-c:a', 'libopus', '-b:a', '48k', '-ar', '48000',
         output_path
     ]
