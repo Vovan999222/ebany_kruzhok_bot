@@ -5,6 +5,8 @@
 ![yt-dlp](https://img.shields.io/badge/yt--dlp-Enabled-red?style=for-the-badge&logo=youtube)
 ![FFmpeg](https://img.shields.io/badge/FFmpeg-Enabled-green?style=for-the-badge&logo=ffmpeg)
 
+**Read this in other languages:** [click](https://docs.volodimir001.me/ebany-kruzhok-bot.html)
+
 This Telegram bot is designed to convert media files and TikTok links into native Telegram formats (Video Notes and Voice Messages).
 
 The bot automatically downloads TikTok videos without watermarks and processes files uploaded by users.
