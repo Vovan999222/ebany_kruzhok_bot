@@ -187,15 +187,18 @@ async def handle_audio(message: types.Message):
         file_url = f"https://api.telegram.org/file/bot{bot.token}/{file_info.file_path}"
         logger.info(f"[{user.id}] {name} прислал аудио. Ссылка: {file_url}")
         await message.answer("⏳ Конвертирую...")
-        await bot.download_file(file_info.file_path, destination=input_path)
-        await asyncio.get_running_loop().run_in_executor(
-            None, lambda: run_ffmpeg_voice(input_path, output_path)
-        )
-        if os.path.exists(output_path):
-            await message.answer_voice(FSInputFile(output_path))
-            logger.info(f"[{user.id}] {name} -> Голосовое отправлено.")
-        else:
-            await message.answer("❌ Ошибка создания файла.")
+
+        async with ChatActionSender(bot=bot, chat_id=message.chat.id, action=ChatAction.RECORD_VOICE):
+            await bot.download_file(file_info.file_path, destination=input_path)
+            await asyncio.get_running_loop().run_in_executor(
+                None, lambda: run_ffmpeg_voice(input_path, output_path)
+            )
+            
+            if os.path.exists(output_path):
+                await message.answer_voice(FSInputFile(output_path))
+                logger.info(f"[{user.id}] {name} -> Голосовое отправлено.")
+            else:
+                await message.answer("❌ Ошибка создания файла.")
 
     except Exception as e:
         logger.error(f"Error audio: {e}")
@@ -224,15 +227,18 @@ async def handle_video(message: types.Message):
         file_url = f"https://api.telegram.org/file/bot{bot.token}/{file_info.file_path}"
         logger.info(f"[{user.id}] {name} прислал видео. Ссылка: {file_url}")
         await message.answer("⏳ Обрабатываю видео...")
-        await bot.download_file(file_info.file_path, destination=input_path)
-        await asyncio.get_running_loop().run_in_executor(
-            None, lambda: run_ffmpeg_video_note(input_path, output_path)
-        )
-        if os.path.exists(output_path) and os.path.getsize(output_path) < MAX_NOTE_SIZE:
-            await message.answer_video_note(FSInputFile(output_path))
-            logger.info(f"[{user.id}] {name} -> Видеокружок отправлен.")
-        else:
-            await message.answer("❌ Файл слишком большой или поврежден.")
+
+        async with ChatActionSender(bot=bot, chat_id=message.chat.id, action=ChatAction.RECORD_VIDEO_NOTE):
+            await bot.download_file(file_info.file_path, destination=input_path)
+            await asyncio.get_running_loop().run_in_executor(
+                None, lambda: run_ffmpeg_video_note(input_path, output_path)
+            )
+            
+            if os.path.exists(output_path) and os.path.getsize(output_path) < MAX_NOTE_SIZE:
+                await message.answer_video_note(FSInputFile(output_path))
+                logger.info(f"[{user.id}] {name} -> Видеокружок отправлен.")
+            else:
+                await message.answer("❌ Файл слишком большой или поврежден.")
 
     except Exception as e:
         logger.error(f"Error video: {e}")
